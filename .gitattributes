@@ -1,0 +1,36 @@
+# Default: auto-detect text and normalize line endings to LF in the repo.
+# On checkout Git honours core.autocrlf / core.eol for the working tree.
+* text=auto
+
+# --- Explicit text declarations (with diff hints where useful) ---
+*.cs            text diff=csharp
+*.csproj        text
+*.props         text
+*.targets       text
+*.config        text
+*.xaml          text
+*.xml           text
+*.json          text
+*.md            text
+*.yml           text
+*.yaml          text
+*.editorconfig  text
+.gitignore      text
+.gitattributes  text
+
+# Visual Studio solution files and PowerShell scripts traditionally expect CRLF.
+*.sln           text eol=crlf
+*.ps1           text eol=crlf
+
+# --- Explicit binary declarations (never line-ending munged, never diffed) ---
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.bmp   binary
+*.pdf   binary
+*.pfx   binary
+*.snk   binary
+*.dll   binary
+*.exe   binary
