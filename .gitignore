@@ -1,0 +1,52 @@
+# Build output
+bin/
+obj/
+out/
+[Dd]ebug/
+[Rr]elease/
+
+# Visual Studio / VS Code / Rider
+.vs/
+*.user
+*.suo
+*.userprefs
+*.sln.docstates
+.vscode/
+.idea/
+
+# NuGet
+packages/
+*.nupkg
+*.snupkg
+
+# Test results / coverage
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+# MSIX / WinUI 3 packaging output
+AppPackages/
+BundleArtifacts/
+*.appx
+*.appxbundle
+*.appxupload
+*.msix
+*.msixbundle
+*.msixupload
+*.pfx
+
+# Generated logs
+*.log
+logs/
+
+# OS scratch
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
+*.swp
+
+# Claude Code per-developer config (a non-.local settings.json is sharable)
+.claude/settings.local.json
+.claude/skills/

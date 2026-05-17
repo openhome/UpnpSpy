@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net7.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>UpnpSpy.App</RootNamespace>
+    <AssemblyName>UpnpSpy</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <PublishProfile>win-$(Platform).pubxml</PublishProfile>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <!--
+      Default to unpackaged so `dotnet run` works for the developer inner loop
+      (quickstart.md §3). Override with -p:WindowsPackageType=MSIX on `dotnet publish`
+      to produce the MSIX (quickstart.md §3 "As an MSIX-packaged build").
+    -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <!--
+      Bundle the Windows App Runtime into the build output so the app starts
+      without a machine-wide Windows App Runtime 1.5 install (Main + DDLM +
+      Singleton). Avoids the bootstrap dialog "This application requires
+      Windows App Runtime version 1.5 …" on developer machines that only
+      have the framework MSIX registered.
+    -->
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\UpnpSpy.Core\UpnpSpy.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <!--
+    Asset hygiene: the Assets directory holds the five MSIX visual-element
+    PNGs that Package.appxmanifest references, plus a small generation
+    script and its inputs (filenames begin with `_`). The PNGs need to flow
+    into the build output and the MSIX payload; the source files do not.
+  -->
+  <ItemGroup>
+    <Content Remove="Assets\_*.*" />
+    <None Include="Assets\_*.*" Pack="false" CopyToOutputDirectory="Never" />
+  </ItemGroup>
+
+</Project>
