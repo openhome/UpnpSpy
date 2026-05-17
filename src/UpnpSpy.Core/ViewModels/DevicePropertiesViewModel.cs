@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using UpnpSpy.Core.Description;
 using UpnpSpy.Core.Discovery;
 using UpnpSpy.Core.Models;
+using UpnpSpy.Core.Platform;
 
 namespace UpnpSpy.Core.ViewModels;
 
@@ -24,6 +25,7 @@ public partial class DevicePropertiesViewModel : ObservableObject, IDisposable
     public const string Placeholder = "—";
 
     private readonly DeviceRegistry _registry;
+    private readonly IDispatcher _dispatcher;
     private bool _disposed;
 
     public Device Device { get; }
@@ -69,10 +71,11 @@ public partial class DevicePropertiesViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isDeviceUnreachable;
 
-    public DevicePropertiesViewModel(Device device, DeviceRegistry registry)
+    public DevicePropertiesViewModel(Device device, DeviceRegistry registry, IDispatcher dispatcher)
     {
         Device = device ?? throw new ArgumentNullException(nameof(device));
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
+        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
 
         Title = $"Properties · {device.Label}";
 
@@ -188,8 +191,12 @@ public partial class DevicePropertiesViewModel : ObservableObject, IDisposable
 
     private void OnDeviceRemoved(DeviceRemovedEvent evt)
     {
+        // DeviceRegistry events fire from whichever thread removed the device
+        // (SSDP pump, rescan coordinator, adapter switch — all background).
+        // Marshal the INPC-observable flip onto the UI thread so the bound
+        // "device no longer reachable" InfoBar actually updates.
         if (string.Equals(evt.Uuid, Device.Uuid, StringComparison.Ordinal))
-            IsDeviceUnreachable = true;
+            _dispatcher.Post(() => IsDeviceUnreachable = true);
     }
 
     private static string Or(string? value) =>

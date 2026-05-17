@@ -3,6 +3,7 @@ using UpnpSpy.Core.Description;
 using UpnpSpy.Core.Discovery;
 using UpnpSpy.Core.Models;
 using UpnpSpy.Core.ViewModels;
+using UpnpSpy.Tests.TestHelpers;
 using Xunit;
 
 namespace UpnpSpy.Tests.ViewModels;
@@ -16,7 +17,7 @@ public sealed class DevicePropertiesViewModelTests
         var registry = new DeviceRegistry();
         registry.TryAddOrUpdate(device);
 
-        using var sut = new DevicePropertiesViewModel(device, registry);
+        using var sut = new DevicePropertiesViewModel(device, registry, new SynchronousDispatcher());
 
         sut.FriendlyName.Should().Be("Sky ADSL Router");
         sut.DeviceType.Should().Be("urn:schemas-upnp-org:device:InternetGatewayDevice:1");
@@ -46,7 +47,7 @@ public sealed class DevicePropertiesViewModelTests
         var registry = new DeviceRegistry();
         registry.TryAddOrUpdate(device);
 
-        using var sut = new DevicePropertiesViewModel(device, registry);
+        using var sut = new DevicePropertiesViewModel(device, registry, new SynchronousDispatcher());
 
         sut.DeviceType.Should().Be(DevicePropertiesViewModel.Placeholder);
         sut.Manufacturer.Should().Be(DevicePropertiesViewModel.Placeholder);
@@ -66,7 +67,7 @@ public sealed class DevicePropertiesViewModelTests
         var registry = new DeviceRegistry();
         registry.TryAddOrUpdate(device);
 
-        using var sut = new DevicePropertiesViewModel(device, registry);
+        using var sut = new DevicePropertiesViewModel(device, registry, new SynchronousDispatcher());
         sut.IsDeviceUnreachable.Should().BeFalse();
 
         registry.Remove(device.Uuid);
@@ -86,7 +87,7 @@ public sealed class DevicePropertiesViewModelTests
             LocationUrl = new Uri("http://192.0.2.99/desc.xml"),
         });
 
-        using var sut = new DevicePropertiesViewModel(device, registry);
+        using var sut = new DevicePropertiesViewModel(device, registry, new SynchronousDispatcher());
         registry.Remove("uuid-other");
 
         sut.IsDeviceUnreachable.Should().BeFalse();
@@ -107,7 +108,7 @@ public sealed class DevicePropertiesViewModelTests
         var registry = new DeviceRegistry();
         registry.TryAddOrUpdate(device);
 
-        using var sut = new DevicePropertiesViewModel(device, registry);
+        using var sut = new DevicePropertiesViewModel(device, registry, new SynchronousDispatcher());
 
         sut.EmbeddedDevices.Should().HaveCount(1);
         sut.EmbeddedDevices[0].FriendlyName.Should().Be("WAN");
@@ -120,7 +121,7 @@ public sealed class DevicePropertiesViewModelTests
         var registry = new DeviceRegistry();
         registry.TryAddOrUpdate(device);
 
-        var sut = new DevicePropertiesViewModel(device, registry);
+        var sut = new DevicePropertiesViewModel(device, registry, new SynchronousDispatcher());
         sut.Dispose();
 
         registry.Remove(device.Uuid);

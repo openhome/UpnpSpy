@@ -21,6 +21,12 @@ public partial class ShellViewModel : ObservableObject
     private readonly IEventCallbackHost _callbackHost;
     private readonly ISsdpTransport _ssdpTransport;
     private readonly DeviceRegistry _registry;
+    private readonly IDispatcher _dispatcher;
+
+    // Serializes InitializeAsync and SwitchAdapterAsync so a quick adapter pick
+    // during startup can't race the still-running initial discovery (both touch
+    // the callback host and SSDP transport).
+    private readonly SemaphoreSlim _bindGate = new(1, 1);
 
     public DeviceTreeViewModel DeviceTree { get; }
 
@@ -98,7 +104,8 @@ public partial class ShellViewModel : ObservableObject
         INetworkAdapterSelector adapterSelector,
         IEventCallbackHost callbackHost,
         ISsdpTransport ssdpTransport,
-        DeviceRegistry registry)
+        DeviceRegistry registry,
+        IDispatcher dispatcher)
     {
         DeviceTree = deviceTree ?? throw new ArgumentNullException(nameof(deviceTree));
         SsdpLog = ssdpLog ?? throw new ArgumentNullException(nameof(ssdpLog));
@@ -111,6 +118,7 @@ public partial class ShellViewModel : ObservableObject
         _callbackHost = callbackHost ?? throw new ArgumentNullException(nameof(callbackHost));
         _ssdpTransport = ssdpTransport ?? throw new ArgumentNullException(nameof(ssdpTransport));
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
+        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         RescanCommand = new AsyncRelayCommand(RescanAsync, () => !IsRescanInProgress && !IsAdapterSwitchInProgress);
         SelectAdapterCommand = new AsyncRelayCommand<EligibleInterface?>(SelectAdapterAsync,
             adapter => adapter is not null && !IsAdapterSwitchInProgress);
@@ -153,7 +161,8 @@ public partial class ShellViewModel : ObservableObject
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        IsInitializing = true;
+        await SetBusyFlagAsync(setInit: true).ConfigureAwait(false);
+        await _bindGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var selected = _adapterSelector.Selected;
@@ -180,14 +189,14 @@ public partial class ShellViewModel : ObservableObject
         }
         finally
         {
-            IsInitializing = false;
+            _bindGate.Release();
+            await SetBusyFlagAsync(setInit: false).ConfigureAwait(false);
         }
     }
 
     private async Task RescanAsync()
     {
-        IsRescanInProgress = true;
-        RescanCommand.NotifyCanExecuteChanged();
+        await SetBusyFlagAsync(setRescan: true).ConfigureAwait(false);
         try
         {
             await _rescanCoordinator.RescanAsync(_shutdown.Token).ConfigureAwait(false);
@@ -199,8 +208,7 @@ public partial class ShellViewModel : ObservableObject
         }
         finally
         {
-            IsRescanInProgress = false;
-            RescanCommand.NotifyCanExecuteChanged();
+            await SetBusyFlagAsync(setRescan: false).ConfigureAwait(false);
         }
     }
 
@@ -226,11 +234,12 @@ public partial class ShellViewModel : ObservableObject
 
     private async Task SwitchAdapterAsync(EligibleInterface? newAdapter)
     {
-        IsAdapterSwitchInProgress = true;
-        RescanCommand.NotifyCanExecuteChanged();
-        SelectAdapterCommand.NotifyCanExecuteChanged();
-        OnPropertyChanged(nameof(SelectedAdapter));
+        await SetBusyFlagAsync(setSwitch: true).ConfigureAwait(false);
+        _dispatcher.Post(() => OnPropertyChanged(nameof(SelectedAdapter)));
 
+        // Serialize with InitializeAsync so a quick adapter pick during startup
+        // can't tangle with the initial discovery's still-running bind sequence.
+        await _bindGate.WaitAsync(_shutdown.Token).ConfigureAwait(false);
         try
         {
             // 1. Clear the registry — every device-removed event fans out to
@@ -267,9 +276,33 @@ public partial class ShellViewModel : ObservableObject
         }
         finally
         {
-            IsAdapterSwitchInProgress = false;
-            RescanCommand.NotifyCanExecuteChanged();
-            SelectAdapterCommand.NotifyCanExecuteChanged();
+            _bindGate.Release();
+            await SetBusyFlagAsync(setSwitch: false).ConfigureAwait(false);
         }
     }
+
+    /// <summary>
+    /// Mutates one of the three busy flags on the UI thread so the bound
+    /// busy-InfoBar / IsBusy / BusyTitle PropertyChanged events fire from a
+    /// thread WinUI's binding system will service. WinUI x:Bind silently drops
+    /// PropertyChanged that arrive from a pool thread — without this marshal,
+    /// the busy bar would stick on its first value forever once a flag flipped
+    /// after the first <c>await</c>.
+    /// </summary>
+    private Task SetBusyFlagAsync(bool? setInit = null, bool? setRescan = null, bool? setSwitch = null) =>
+        _dispatcher.RunOnUiAsync(() =>
+        {
+            if (setInit is { } i) IsInitializing = i;
+            if (setRescan is { } r)
+            {
+                IsRescanInProgress = r;
+                RescanCommand.NotifyCanExecuteChanged();
+            }
+            if (setSwitch is { } s)
+            {
+                IsAdapterSwitchInProgress = s;
+                RescanCommand.NotifyCanExecuteChanged();
+                SelectAdapterCommand.NotifyCanExecuteChanged();
+            }
+        });
 }
