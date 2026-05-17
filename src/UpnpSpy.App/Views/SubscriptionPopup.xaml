@@ -6,75 +6,102 @@
     xmlns:vm="using:UpnpSpy.Core.ViewModels"
     xmlns:models="using:UpnpSpy.Core.Models"
     Title="Subscribe">
-    <Grid Padding="16" RowSpacing="12">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
+    <!--
+        Window cannot host x:Bind converters directly (the generated code casts
+        `this` to FrameworkElement and Window does not derive from it). Wrap the
+        content in a UserControl whose DataContext is set in code-behind, and use
+        {Binding ...} so converter resolution walks a FrameworkElement tree.
+    -->
+    <UserControl x:Name="Root">
+        <Grid Padding="20" RowSpacing="14">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
-        <TextBlock x:Name="TitleText"
-                   Grid.Row="0"
-                   FontSize="18"
-                   FontWeight="SemiBold" />
+            <StackPanel Grid.Row="0" Spacing="2">
+                <TextBlock Text="{Binding Title}"
+                           Style="{ThemeResource SubtitleTextBlockStyle}" />
+                <TextBlock Text="Subscribe to GENA events"
+                           Style="{ThemeResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
 
-        <InfoBar x:Name="StatusBar"
-                 Grid.Row="1"
-                 IsOpen="True"
-                 IsClosable="False"
-                 Severity="Informational"
-                 Title="Subscription pending"
-                 Message="Waiting for the device to confirm…" />
+            <InfoBar Grid.Row="1"
+                     IsOpen="True"
+                     IsClosable="False"
+                     Severity="{Binding Status, Mode=OneWay, Converter={StaticResource SubscriptionStatusToInfoBarSeverity}}"
+                     Title="{Binding StatusBarTitle, Mode=OneWay}"
+                     Message="{Binding StatusBarMessage, Mode=OneWay}" />
 
-        <TextBlock x:Name="CallbackText"
-                   Grid.Row="2"
-                   FontFamily="Consolas"
-                   Foreground="{ThemeResource SystemBaseMediumColor}" />
+            <TextBlock Grid.Row="2"
+                       Text="{Binding CallbackUrlText, Mode=OneWay}"
+                       FontFamily="Consolas"
+                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                       TextTrimming="CharacterEllipsis" />
 
-        <Expander Grid.Row="3"
-                  Header="Latest property values"
-                  IsExpanded="True">
-            <ItemsControl x:Name="LatestList">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:EventPropertyRow">
-                        <Grid ColumnSpacing="8" Margin="0,0,0,4">
+            <Expander Grid.Row="3"
+                      Header="Latest property values"
+                      IsExpanded="True">
+                <ItemsControl ItemsSource="{Binding LatestProperties, Mode=OneWay}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:EventPropertyRow">
+                            <Grid ColumnSpacing="8" Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="200" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Text="{x:Bind Name}"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="1"
+                                           Text="{x:Bind Value, Mode=OneWay}"
+                                           TextWrapping="Wrap"
+                                           IsTextSelectionEnabled="True" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Expander>
+
+            <ListView Grid.Row="4"
+                      ItemsSource="{Binding Events, Mode=OneWay}"
+                      SelectionMode="None"
+                      IsItemClickEnabled="False">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="MinHeight" Value="0" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="models:EventNotification">
+                        <Grid Padding="12,6" ColumnSpacing="12">
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="64" />
                                 <ColumnDefinition Width="180" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0"
-                                       Text="{x:Bind Name}"
-                                       FontWeight="SemiBold" />
+                                       Text="{x:Bind SequenceNumber}"
+                                       FontFamily="Consolas"
+                                       Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                             <TextBlock Grid.Column="1"
-                                       Text="{x:Bind Value, Mode=OneWay}"
-                                       TextWrapping="Wrap"
+                                       Text="{x:Bind ReceivedUtc.LocalDateTime}"
+                                       FontFamily="Consolas"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Grid.Column="2"
+                                       Text="{x:Bind ChangedPropertiesText}"
+                                       TextTrimming="CharacterEllipsis"
                                        IsTextSelectionEnabled="True" />
                         </Grid>
                     </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </Expander>
-
-        <ListView x:Name="EventsList"
-                  Grid.Row="4"
-                  SelectionMode="None"
-                  IsItemClickEnabled="False">
-            <ListView.ItemTemplate>
-                <DataTemplate x:DataType="models:EventNotification">
-                    <StackPanel Orientation="Vertical"
-                                Padding="0,4,0,4"
-                                Spacing="2">
-                        <TextBlock FontFamily="Consolas">
-                            <Run Text="SEQ " />
-                            <Run Text="{x:Bind SequenceNumber}" />
-                            <Run Text="  " />
-                            <Run Text="{x:Bind ReceivedUtc}" />
-                        </TextBlock>
-                    </StackPanel>
-                </DataTemplate>
-            </ListView.ItemTemplate>
-        </ListView>
-    </Grid>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Grid>
+    </UserControl>
 </Window>

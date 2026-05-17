@@ -13,6 +13,10 @@ namespace UpnpSpy.Core.ViewModels;
 /// the device did not declare so the rendered grid is unambiguous. Watches
 /// <see cref="DeviceRegistry"/> so the window can show a "device no longer
 /// reachable" banner per FR-037 if the user keeps it open after byebye.
+///
+/// Exposes two interfaces: (a) flat <c>FriendlyName</c>/<c>DeviceType</c>/etc.
+/// properties for test access; (b) a <c>Sections</c> collection consumed by the
+/// XAML's ItemsControl-of-ItemsControl rendering, so the view stays declarative.
 /// </summary>
 public partial class DevicePropertiesViewModel : ObservableObject, IDisposable
 {
@@ -55,6 +59,12 @@ public partial class DevicePropertiesViewModel : ObservableObject, IDisposable
     public string ConfigId { get; }
 
     public IReadOnlyList<EmbeddedDeviceSummary> EmbeddedDevices { get; }
+
+    /// <summary>
+    /// Declarative section/row tree consumed by the view. Built once at
+    /// construction from the flat properties above.
+    /// </summary>
+    public IReadOnlyList<PropertySection> Sections { get; }
 
     [ObservableProperty]
     private bool _isDeviceUnreachable;
@@ -103,7 +113,77 @@ public partial class DevicePropertiesViewModel : ObservableObject, IDisposable
 
         EmbeddedDevices = device.EmbeddedDevices;
 
+        Sections = BuildSections();
+
         _registry.DeviceRemoved += OnDeviceRemoved;
+    }
+
+    private IReadOnlyList<PropertySection> BuildSections() => new[]
+    {
+        new PropertySection("Identity", new PropertyRow[]
+        {
+            new PropertyTextRow("Friendly name", FriendlyName),
+            new PropertyTextRow("Device type", DeviceType, Monospace: true),
+            new PropertyTextRow("UUID", Uuid, Monospace: true),
+            PresentationUrl is null
+                ? new PropertyTextRow("Presentation URL", PresentationUrlText)
+                : new PropertyLinkRow("Presentation URL", PresentationUrlText, PresentationUrl),
+        }),
+        new PropertySection("Manufacturer", new PropertyRow[]
+        {
+            new PropertyTextRow("Manufacturer", Manufacturer),
+            ManufacturerUrl is null
+                ? new PropertyTextRow("Manufacturer URL", ManufacturerUrlText)
+                : new PropertyLinkRow("Manufacturer URL", ManufacturerUrlText, ManufacturerUrl),
+            new PropertyTextRow("Model name", ModelName),
+            new PropertyTextRow("Model number", ModelNumber),
+            new PropertyTextRow("Model description", ModelDescription),
+            ModelUrl is null
+                ? new PropertyTextRow("Model URL", ModelUrlText)
+                : new PropertyLinkRow("Model URL", ModelUrlText, ModelUrl),
+            new PropertyTextRow("Serial number", SerialNumber, Monospace: true),
+            new PropertyTextRow("UPC", Upc, Monospace: true),
+        }),
+        new PropertySection("Network", new PropertyRow[]
+        {
+            new PropertyLinkRow("Location URL", LocationUrlText, LocationUrl),
+            new PropertyTextRow("Endpoint", Endpoint, Monospace: true),
+            new PropertyTextRow("SERVER header", ServerHeader, Monospace: true),
+            new PropertyTextRow("CACHE-CONTROL max-age", CacheControlMaxAge),
+        }),
+        new PropertySection("Discovery history", new PropertyRow[]
+        {
+            new PropertyTextRow("First seen", FirstSeenUtc, Monospace: true),
+            new PropertyTextRow("Last seen", LastSeenUtc, Monospace: true),
+            new PropertyTextRow("Alive count", AliveCount),
+            new PropertyTextRow("BOOTID.UPNP.ORG", BootId),
+            new PropertyTextRow("CONFIGID.UPNP.ORG", ConfigId),
+        }),
+    };
+
+    /// <summary>
+    /// Build a single plain-text snapshot of every section/row so the view can
+    /// offer a "Copy all" affordance (review item #6 / properties polish).
+    /// </summary>
+    public string ToClipboardText()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append(Title).Append('\n').Append('\n');
+        foreach (var section in Sections)
+        {
+            sb.Append(section.Title).Append('\n');
+            foreach (var row in section.Rows)
+                sb.Append("  ").Append(row.Label).Append(": ").Append(row.Value).Append('\n');
+            sb.Append('\n');
+        }
+        if (EmbeddedDevices.Count > 0)
+        {
+            sb.Append("Embedded devices\n");
+            foreach (var ed in EmbeddedDevices)
+                sb.Append("  ").Append(ed.FriendlyName).Append(" — ").Append(ed.DeviceType)
+                  .Append(" (").Append(ed.Udn).Append(")\n");
+        }
+        return sb.ToString();
     }
 
     private void OnDeviceRemoved(DeviceRemovedEvent evt)
@@ -122,3 +202,22 @@ public partial class DevicePropertiesViewModel : ObservableObject, IDisposable
         _registry.DeviceRemoved -= OnDeviceRemoved;
     }
 }
+
+/// <summary>One grouped block of rows in the Properties window.</summary>
+public sealed record PropertySection(string Title, IReadOnlyList<PropertyRow> Rows);
+
+/// <summary>
+/// Base type for one label/value pair in the Properties window. The two
+/// subtypes drive a DataTemplateSelector so the view renders text and link
+/// rows with distinct templates — no converters required (and converters are
+/// unsupported inside DataTemplates whose XAML root is a WinUI Window).
+/// </summary>
+public abstract record PropertyRow(string Label, string Value);
+
+/// <summary>A plain text value row (read-only).</summary>
+public sealed record PropertyTextRow(string Label, string Value, bool Monospace = false)
+    : PropertyRow(Label, Value);
+
+/// <summary>A value row rendered as a HyperlinkButton when the link is present.</summary>
+public sealed record PropertyLinkRow(string Label, string Value, Uri LinkUri)
+    : PropertyRow(Label, Value);

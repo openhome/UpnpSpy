@@ -37,7 +37,7 @@
         </Grid.RowDefinitions>
 
         <Grid Grid.Row="0" Padding="8,4" ColumnSpacing="12"
-              Background="{ThemeResource SystemControlBackgroundBaseLowBrush}">
+              Background="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="180" />
                 <ColumnDefinition Width="72" />
@@ -48,21 +48,36 @@
             <TextBlock Grid.Column="2" Text="Device UUID" FontWeight="SemiBold" />
         </Grid>
 
-        <ListView x:Name="EntriesList"
-                  Grid.Row="1"
-                  ItemsSource="{x:Bind ViewModel.Entries, Mode=OneWay}"
-                  ItemTemplate="{StaticResource SsdpLogEntryTemplate}"
-                  SelectionMode="None"
-                  IsItemClickEnabled="False"
-                  Loaded="OnListViewLoaded"
-                  Unloaded="OnListViewUnloaded">
-            <ListView.ItemContainerStyle>
-                <Style TargetType="ListViewItem">
-                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                    <Setter Property="Padding" Value="0" />
-                    <Setter Property="MinHeight" Value="0" />
-                </Style>
-            </ListView.ItemContainerStyle>
-        </ListView>
+        <Grid Grid.Row="1">
+            <ListView x:Name="EntriesList"
+                      ItemsSource="{x:Bind ViewModel.Entries, Mode=OneWay}"
+                      ItemTemplate="{StaticResource SsdpLogEntryTemplate}"
+                      SelectionMode="None"
+                      IsItemClickEnabled="False"
+                      Loaded="OnListViewLoaded"
+                      Unloaded="OnListViewUnloaded">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="MinHeight" Value="0" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+            </ListView>
+
+            <!--
+                Empty state: hidden once the first advertisement arrives. Placed
+                inside the list grid so it overlays the empty ListView.
+            -->
+            <StackPanel Style="{StaticResource EmptyStatePanelStyle}"
+                        IsHitTestVisible="False"
+                        Visibility="{x:Bind ViewModel.Entries.Count, Mode=OneWay, Converter={StaticResource ZeroCountToVisibility}}">
+                <FontIcon Glyph="&#xE7C3;" Style="{StaticResource EmptyStateGlyphStyle}" />
+                <TextBlock Text="No SSDP traffic seen yet"
+                           Style="{StaticResource EmptyStateTitleTextBlockStyle}" />
+                <TextBlock Style="{StaticResource EmptyStateBodyTextBlockStyle}"
+                           Text="Every ALIVE/BYEBYE advertisement received on the selected adapter will appear here. Quiet networks can take a few seconds before the first message arrives." />
+            </StackPanel>
+        </Grid>
     </Grid>
 </UserControl>

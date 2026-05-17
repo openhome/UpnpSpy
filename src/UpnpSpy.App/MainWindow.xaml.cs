@@ -34,10 +34,17 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(handleProvider);
 
         InitializeComponent();
-        // FR-046: publish the main window's HWND so secondary windows can be
-        // owner-owned. Must run after InitializeComponent so the HWND exists.
+        // FR-046: publish the main window's HWND so secondary windows can be owner-owned.
         handleProvider.Initialize(WinRT.Interop.WindowNative.GetWindowHandle(this));
-        Root.Children.Add(new ShellView(shellVm, invocationFactory, subscriptionFactory, propertiesFactory, diagnosticsVmFactory, handleProvider));
+
+        WindowChrome.TryApplyMica(this);
+
+        // Extend content into the title bar so the custom AppTitleBar row in XAML
+        // doubles as the drag region.
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBarDragRegion);
+
+        ShellHost.Content = new ShellView(shellVm, invocationFactory, subscriptionFactory, propertiesFactory, diagnosticsVmFactory, handleProvider);
 
         Activated += OnActivated;
         Closed += OnClosed;
@@ -49,8 +56,6 @@ public sealed partial class MainWindow : Window
             return;
 
         _firstActivation = false;
-        // FR-049: callback-host binding now lives inside ShellViewModel.InitializeAsync
-        // (it uses the selected adapter's IP, not a wildcard).
         _ = _shellVm.InitializeAsync(_shutdownSource.Token);
     }
 

@@ -4,5 +4,53 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="UpnpSpy">
-    <Grid x:Name="Root" />
+    <Grid x:Name="Root">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--
+            Custom title bar that lives inside the client area once
+            ExtendsContentIntoTitleBar is set in code-behind. The transparent
+            DragRegion fills the whole bar so the user can grab any blank pixel.
+            Real interactive elements (the menu, status bar) are added by ShellView.
+        -->
+        <Grid x:Name="AppTitleBar"
+              Grid.Row="0"
+              Height="32"
+              Background="Transparent">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <FontIcon Grid.Column="0"
+                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                      Glyph="&#xE968;"
+                      FontSize="16"
+                      Margin="12,0,8,0"
+                      VerticalAlignment="Center"
+                      Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+
+            <TextBlock x:Name="AppTitleText"
+                       Grid.Column="1"
+                       Text="UpnpSpy"
+                       VerticalAlignment="Center"
+                       Style="{ThemeResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+
+            <!--
+                DragRegion: any non-interactive space in this column is draggable
+                once we mark it via SetTitleBar. The actual ShellView host below
+                covers row 1, so this row stays as the title bar.
+            -->
+            <Border x:Name="AppTitleBarDragRegion"
+                    Grid.Column="2"
+                    Background="Transparent" />
+        </Grid>
+
+        <ContentPresenter x:Name="ShellHost" Grid.Row="1" />
+    </Grid>
 </Window>

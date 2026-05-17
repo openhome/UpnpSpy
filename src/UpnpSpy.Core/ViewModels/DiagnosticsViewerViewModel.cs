@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using CommunityToolkit.Mvvm.ComponentModel;
 using UpnpSpy.Core.Collections;
 using UpnpSpy.Core.Diagnostics;
@@ -17,6 +19,11 @@ namespace UpnpSpy.Core.ViewModels;
 /// IP alongside the message. Live updates are marshalled onto the UI thread
 /// through <see cref="IDispatcher"/>. Disposing unsubscribes so closing the
 /// window stops further mutations.
+///
+/// Beyond raw recording, the VM exposes <see cref="FilteredEntries"/>, a derived
+/// view that reflects <see cref="FilterText"/> and <see cref="MinSeverity"/>;
+/// the XAML binds to that so the user can narrow the visible set without
+/// touching the underlying ring buffer.
 /// </summary>
 public sealed partial class DiagnosticsViewerViewModel : ObservableObject, IDisposable
 {
@@ -33,12 +40,41 @@ public sealed partial class DiagnosticsViewerViewModel : ObservableObject, IDisp
 
     public BoundedObservableCollection<DiagnosticEntryRow> Entries { get; }
 
+    /// <summary>The filtered view bound by the XAML.</summary>
+    public ObservableCollection<DiagnosticEntryRow> FilteredEntries { get; } = new();
+
+    /// <summary>Path to the rolling log file on disk, or null if no file sink is wired.</summary>
+    public string? LogFilePath { get; }
+
+    [ObservableProperty]
+    private string _filterText = string.Empty;
+
+    [ObservableProperty]
+    private DiagnosticSeverity _minSeverity = DiagnosticSeverity.Trace;
+
     public DiagnosticsViewerViewModel(IDiagnosticBuffer buffer, DeviceRegistry registry, IDispatcher dispatcher)
+        : this(buffer, registry, dispatcher, logFilePath: null)
+    {
+    }
+
+    public DiagnosticsViewerViewModel(
+        IDiagnosticBuffer buffer,
+        DeviceRegistry registry,
+        IDispatcher dispatcher,
+        string? logFilePath)
     {
         _buffer = buffer ?? throw new ArgumentNullException(nameof(buffer));
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+        LogFilePath = logFilePath;
         Entries = new BoundedObservableCollection<DiagnosticEntryRow>(Math.Max(buffer.Capacity, 1));
+
+        Entries.CollectionChanged += OnEntriesChanged;
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(FilterText) or nameof(MinSeverity))
+                RebuildFilteredView();
+        };
     }
 
     /// <summary>
@@ -70,6 +106,49 @@ public sealed partial class DiagnosticsViewerViewModel : ObservableObject, IDisp
         entry,
         identity: ResolveIdentity(entry),
         endpoint: ResolveEndpoint(entry));
+
+    private void OnEntriesChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        switch (e.Action)
+        {
+            case NotifyCollectionChangedAction.Add when e.NewItems is not null:
+                foreach (DiagnosticEntryRow row in e.NewItems)
+                {
+                    if (Passes(row))
+                        FilteredEntries.Add(row);
+                }
+                break;
+            case NotifyCollectionChangedAction.Remove:
+            case NotifyCollectionChangedAction.Reset:
+                RebuildFilteredView();
+                break;
+        }
+    }
+
+    private void RebuildFilteredView()
+    {
+        FilteredEntries.Clear();
+        foreach (var row in Entries)
+        {
+            if (Passes(row))
+                FilteredEntries.Add(row);
+        }
+    }
+
+    private bool Passes(DiagnosticEntryRow row)
+    {
+        if ((int)row.Severity < (int)MinSeverity) return false;
+        if (string.IsNullOrEmpty(FilterText)) return true;
+
+        var needle = FilterText;
+        return Contains(row.Message, needle)
+            || Contains(row.Category, needle)
+            || Contains(row.Identity, needle)
+            || Contains(row.Endpoint, needle);
+    }
+
+    private static bool Contains(string? hay, string needle) =>
+        hay is not null && hay.Contains(needle, StringComparison.OrdinalIgnoreCase);
 
     private string ResolveIdentity(DiagnosticEntry entry)
     {
@@ -139,4 +218,18 @@ public sealed class DiagnosticEntryRow
     public DiagnosticSeverity Severity => Entry.Severity;
     public string Category => Entry.Category;
     public string Message => Entry.Message;
+
+    /// <summary>
+    /// Severity glyph string for the leading icon column. Uses Segoe Fluent
+    /// Icons codepoints so XAML can bind directly without a converter (the
+    /// WinUI 3 codegen does not support StaticResource converters from inside
+    /// DataTemplates that live under a Window root).
+    /// </summary>
+    public string SeverityGlyph => Severity switch
+    {
+        DiagnosticSeverity.Error => "",       // ErrorBadge
+        DiagnosticSeverity.Warning => "",     // Warning
+        DiagnosticSeverity.Information => "", // Info
+        _ => "",                              // Important (subtle marker for Trace)
+    };
 }

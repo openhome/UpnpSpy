@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -42,6 +43,50 @@ public partial class ShellViewModel : ObservableObject
     [ObservableProperty]
     private bool _isAdapterSwitchInProgress;
 
+    /// <summary>True while any background work is in progress (init / rescan / adapter switch).</summary>
+    public bool IsBusy => IsInitializing || IsRescanInProgress || IsAdapterSwitchInProgress;
+
+    /// <summary>Headline string for the busy InfoBar.</summary>
+    public string BusyTitle
+    {
+        get
+        {
+            if (IsAdapterSwitchInProgress) return "Switching network adapter";
+            if (IsRescanInProgress) return "Rescanning the network";
+            if (IsInitializing) return "Discovering UPnP devices";
+            return string.Empty;
+        }
+    }
+
+    /// <summary>Sub-headline for the busy InfoBar.</summary>
+    public string BusyMessage
+    {
+        get
+        {
+            if (IsAdapterSwitchInProgress) return "Rebinding sockets and re-running discovery.";
+            if (IsRescanInProgress) return "Sending M-SEARCH and pruning non-responders.";
+            if (IsInitializing) return "Listening for SSDP advertisements on the local network.";
+            return string.Empty;
+        }
+    }
+
+    /// <summary>Display label for the currently-selected adapter (e.g. "Wi-Fi · 192.168.1.42").</summary>
+    public string AdapterDisplay => SelectedAdapter is { } a
+        ? $"{a.Name} · {a.Ipv4Address}"
+        : "(no adapter)";
+
+    /// <summary>Live count of devices visible in the tree.</summary>
+    public int DeviceCount => DeviceTree.Devices.Count;
+
+    /// <summary>Live count of SSDP advertisements in the right-pane log.</summary>
+    public int SsdpLogCount => SsdpLog.Entries.Count;
+
+    /// <summary>Pre-formatted "N devices" for status-bar display.</summary>
+    public string DeviceCountText => $"{DeviceCount} device{(DeviceCount == 1 ? "" : "s")}";
+
+    /// <summary>Pre-formatted "N SSDP messages" for status-bar display.</summary>
+    public string SsdpLogCountText => $"{SsdpLogCount} SSDP message{(SsdpLogCount == 1 ? "" : "s")}";
+
     public ShellViewModel(
         DeviceTreeViewModel deviceTree,
         SsdpLogViewModel ssdpLog,
@@ -70,6 +115,40 @@ public partial class ShellViewModel : ObservableObject
         SelectAdapterCommand = new AsyncRelayCommand<EligibleInterface?>(SelectAdapterAsync,
             adapter => adapter is not null && !IsAdapterSwitchInProgress);
         _adapterSelector.Changed += OnAdapterChanged;
+
+        // Re-emit the computed busy properties when any of the three underlying
+        // flags flip, so the View can bind once and react to all three.
+        PropertyChanged += (_, e) =>
+        {
+            switch (e.PropertyName)
+            {
+                case nameof(IsInitializing):
+                case nameof(IsRescanInProgress):
+                case nameof(IsAdapterSwitchInProgress):
+                    OnPropertyChanged(nameof(IsBusy));
+                    OnPropertyChanged(nameof(BusyTitle));
+                    OnPropertyChanged(nameof(BusyMessage));
+                    break;
+                case nameof(SelectedAdapter):
+                    OnPropertyChanged(nameof(AdapterDisplay));
+                    break;
+            }
+        };
+
+        DeviceTree.Devices.CollectionChanged += OnDevicesChanged;
+        SsdpLog.Entries.CollectionChanged += OnSsdpEntriesChanged;
+    }
+
+    private void OnDevicesChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(DeviceCount));
+        OnPropertyChanged(nameof(DeviceCountText));
+    }
+
+    private void OnSsdpEntriesChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(SsdpLogCount));
+        OnPropertyChanged(nameof(SsdpLogCountText));
     }
 
     public async Task InitializeAsync(CancellationToken cancellationToken)

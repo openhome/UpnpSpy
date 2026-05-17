@@ -34,16 +34,24 @@
                         <TextBlock Text="{x:Bind Label, Mode=OneWay}" />
                         <TextBlock Text="{x:Bind DetailLabel, Mode=OneWay}"
                                    FontSize="11"
-                                   Foreground="{ThemeResource SystemControlDescriptionTextForegroundBrush}" />
+                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                     </StackPanel>
                 </Grid>
                 <TreeViewItem.ContextFlyout>
                     <MenuFlyout>
                         <MenuFlyoutItem Text="Fetch XML"
-                                        Command="{x:Bind FetchXmlCommand, Mode=OneWay}" />
+                                        Command="{x:Bind FetchXmlCommand, Mode=OneWay}">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE8A7;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
                         <MenuFlyoutItem Text="Properties..."
                                         Click="OnPropertiesClicked"
-                                        Tag="{x:Bind Device}" />
+                                        Tag="{x:Bind Device}">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE946;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
                     </MenuFlyout>
                 </TreeViewItem.ContextFlyout>
             </TreeViewItem>
@@ -62,10 +70,18 @@
                 <TreeViewItem.ContextFlyout>
                     <MenuFlyout>
                         <MenuFlyoutItem Text="Fetch service XML"
-                                        Command="{x:Bind FetchScpdCommand}" />
+                                        Command="{x:Bind FetchScpdCommand}">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE8A7;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
                         <MenuFlyoutItem Text="Subscribe"
                                         Click="OnSubscribeClicked"
-                                        Tag="{x:Bind Service}" />
+                                        Tag="{x:Bind Service}">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xEC42;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
                     </MenuFlyout>
                 </TreeViewItem.ContextFlyout>
             </TreeViewItem>
@@ -101,5 +117,20 @@
                   SelectionMode="Single"
                   ItemTemplateSelector="{StaticResource NodeTemplateSelector}"
                   Expanding="OnTreeViewExpanding" />
+
+        <!--
+            Empty state: shown beneath the (otherwise empty) TreeView while no
+            devices have been discovered yet. Once a device promotes into
+            Devices the count flips non-zero and the overlay collapses.
+        -->
+        <StackPanel Style="{StaticResource EmptyStatePanelStyle}"
+                    IsHitTestVisible="False"
+                    Visibility="{x:Bind ViewModel.Devices.Count, Mode=OneWay, Converter={StaticResource ZeroCountToVisibility}}">
+            <FontIcon Glyph="&#xE968;" Style="{StaticResource EmptyStateGlyphStyle}" />
+            <TextBlock Text="No UPnP devices yet"
+                       Style="{StaticResource EmptyStateTitleTextBlockStyle}" />
+            <TextBlock Style="{StaticResource EmptyStateBodyTextBlockStyle}"
+                       Text="Listening for SSDP advertisements on the selected network adapter. If nothing appears, try View → Rescan (F5), or pick a different adapter from View → Network adapter." />
+        </StackPanel>
     </Grid>
 </UserControl>

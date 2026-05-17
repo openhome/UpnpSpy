@@ -65,6 +65,36 @@ public partial class SubscriptionPopupViewModel : ObservableObject, IAsyncDispos
     [ObservableProperty]
     private bool _isDeviceUnreachable;
 
+    /// <summary>Title shown on the popup's status InfoBar.</summary>
+    public string StatusBarTitle => Status switch
+    {
+        SubscriptionStatus.Pending => "Subscription pending",
+        SubscriptionStatus.Active => "Subscribed",
+        SubscriptionStatus.Lapsed => "Subscription lapsed",
+        SubscriptionStatus.Failed => "Subscribe failed",
+        SubscriptionStatus.Closed when IsDeviceUnreachable => "Device no longer reachable",
+        SubscriptionStatus.Closed => "Subscription closed",
+        _ => string.Empty,
+    };
+
+    /// <summary>Sub-headline shown on the popup's status InfoBar.</summary>
+    public string StatusBarMessage => Status switch
+    {
+        SubscriptionStatus.Pending => "Waiting for the device to confirm…",
+        SubscriptionStatus.Active when _state?.Sid is not null
+            => $"SID {_state.Sid} · granted {_state.GrantedTimeout}",
+        SubscriptionStatus.Active => "Active",
+        SubscriptionStatus.Lapsed => FailureReason ?? "Renewal failed.",
+        SubscriptionStatus.Failed => FailureReason ?? "SUBSCRIBE failed.",
+        SubscriptionStatus.Closed when IsDeviceUnreachable
+            => "The device has gone away. Close this window.",
+        SubscriptionStatus.Closed => "Subscription has been closed.",
+        _ => string.Empty,
+    };
+
+    /// <summary>Display string for the local callback URL once subscription is active.</summary>
+    public string CallbackUrlText => _state?.CallbackUrl?.ToString() ?? string.Empty;
+
     public SubscriptionPopupViewModel(
         Service service,
         ISubscriptionClient subscriptionClient,
@@ -87,6 +117,24 @@ public partial class SubscriptionPopupViewModel : ObservableObject, IAsyncDispos
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(shutdownToken);
         _registry.DeviceRemoved += OnDeviceRemoved;
+
+        // Status / failure reason / unreachable flag all feed into the
+        // bound StatusBarTitle/StatusBarMessage strings — re-emit them.
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(Status)
+                                 or nameof(FailureReason)
+                                 or nameof(IsDeviceUnreachable))
+            {
+                OnPropertyChanged(nameof(StatusBarTitle));
+                OnPropertyChanged(nameof(StatusBarMessage));
+            }
+            if (e.PropertyName == nameof(State))
+            {
+                OnPropertyChanged(nameof(CallbackUrlText));
+                OnPropertyChanged(nameof(StatusBarMessage));
+            }
+        };
     }
 
     public Task StartAsync() => RunSubscribeAsync(_cts.Token);
@@ -292,4 +340,18 @@ public partial class EventPropertyRow : ObservableObject
         Name = name;
         _value = value;
     }
+}
+
+/// <summary>
+/// Display extensions to <see cref="EventNotification"/>. The event list shows
+/// the SEQ, the local timestamp, and a comma-separated list of which properties
+/// changed in that notification, so back-to-back events with different payloads
+/// can be told apart at a glance (review item #7).
+/// </summary>
+public static class EventNotificationDisplay
+{
+    public static string FormatChangedProperties(this EventNotification ev) =>
+        ev.Properties.Count == 0
+            ? "(no properties)"
+            : string.Join(", ", ev.Properties.Keys);
 }

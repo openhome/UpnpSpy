@@ -5,74 +5,143 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:UpnpSpy.Core.ViewModels"
     Title="Diagnostics">
-    <Grid Padding="16" RowSpacing="8">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
+    <UserControl x:Name="Root">
+        <Grid Padding="20" RowSpacing="10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0"
-                   FontSize="18"
-                   FontWeight="SemiBold"
-                   Text="Diagnostics" />
+            <StackPanel Grid.Row="0" Spacing="2">
+                <TextBlock Text="Diagnostics" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                <TextBlock Text="In-memory ring buffer; updates live as new entries are recorded."
+                           Style="{ThemeResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
 
-        <Grid Grid.Row="1" ColumnSpacing="8" Padding="0,4,0,4"
-              Background="{ThemeResource SystemControlBackgroundBaseLowBrush}">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="200" />
-                <ColumnDefinition Width="80" />
-                <ColumnDefinition Width="180" />
-                <ColumnDefinition Width="180" />
-                <ColumnDefinition Width="140" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="Timestamp" FontWeight="SemiBold" />
-            <TextBlock Grid.Column="1" Text="Severity" FontWeight="SemiBold" />
-            <TextBlock Grid.Column="2" Text="Category" FontWeight="SemiBold" />
-            <TextBlock Grid.Column="3" Text="Identity" FontWeight="SemiBold" />
-            <TextBlock Grid.Column="4" Text="Endpoint" FontWeight="SemiBold" />
-            <TextBlock Grid.Column="5" Text="Message" FontWeight="SemiBold" />
+            <Grid Grid.Row="1" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBox Grid.Column="0"
+                         PlaceholderText="Filter (message, category, identity, endpoint)"
+                         Text="{Binding FilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                <ComboBox Grid.Column="1"
+                          x:Name="SeverityCombo"
+                          Width="140"
+                          SelectionChanged="OnSeverityChanged">
+                    <ComboBoxItem Content="All severities" Tag="Trace" IsSelected="True" />
+                    <ComboBoxItem Content="Information+" Tag="Information" />
+                    <ComboBoxItem Content="Warning+" Tag="Warning" />
+                    <ComboBoxItem Content="Error only" Tag="Error" />
+                </ComboBox>
+
+                <Button Grid.Column="2" Click="OnCopyClicked"
+                        ToolTipService.ToolTip="Copy selected rows (or all visible rows when nothing is selected)">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                  Glyph="&#xE8C8;" FontSize="14" />
+                        <TextBlock Text="Copy" />
+                    </StackPanel>
+                </Button>
+
+                <Button Grid.Column="3" Click="OnOpenLogFolderClicked"
+                        ToolTipService.ToolTip="Show the rolling diagnostic log file in Explorer">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                  Glyph="&#xE8DA;" FontSize="14" />
+                        <TextBlock Text="Open log folder" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+
+            <Grid Grid.Row="2" ColumnSpacing="8" Padding="8,6"
+                  Background="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="28" />
+                    <ColumnDefinition Width="200" />
+                    <ColumnDefinition Width="180" />
+                    <ColumnDefinition Width="180" />
+                    <ColumnDefinition Width="140" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="1" Text="Timestamp" FontWeight="SemiBold" />
+                <TextBlock Grid.Column="2" Text="Category" FontWeight="SemiBold" />
+                <TextBlock Grid.Column="3" Text="Identity" FontWeight="SemiBold" />
+                <TextBlock Grid.Column="4" Text="Endpoint" FontWeight="SemiBold" />
+                <TextBlock Grid.Column="5" Text="Message" FontWeight="SemiBold" />
+            </Grid>
+
+            <Grid Grid.Row="3">
+                <ListView x:Name="EntriesList"
+                          ItemsSource="{Binding FilteredEntries, Mode=OneWay}"
+                          SelectionMode="Extended"
+                          IsItemClickEnabled="False">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="MinHeight" Value="0" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="vm:DiagnosticEntryRow">
+                            <Grid ColumnSpacing="8" Padding="8,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="28" />
+                                    <ColumnDefinition Width="200" />
+                                    <ColumnDefinition Width="180" />
+                                    <ColumnDefinition Width="180" />
+                                    <ColumnDefinition Width="140" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Grid.Column="0"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          Glyph="{x:Bind SeverityGlyph}"
+                                          FontSize="14"
+                                          VerticalAlignment="Center"
+                                          HorizontalAlignment="Center"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Grid.Column="1"
+                                           Text="{x:Bind Timestamp.LocalDateTime}"
+                                           FontFamily="Consolas" />
+                                <TextBlock Grid.Column="2"
+                                           Text="{x:Bind Category}"
+                                           FontFamily="Consolas" />
+                                <TextBlock Grid.Column="3"
+                                           Text="{x:Bind Identity}"
+                                           TextTrimming="CharacterEllipsis"
+                                           IsTextSelectionEnabled="True" />
+                                <TextBlock Grid.Column="4"
+                                           Text="{x:Bind Endpoint}"
+                                           FontFamily="Consolas"
+                                           IsTextSelectionEnabled="True" />
+                                <TextBlock Grid.Column="5"
+                                           Text="{x:Bind Message}"
+                                           TextWrapping="Wrap"
+                                           IsTextSelectionEnabled="True" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
+                <StackPanel Style="{StaticResource EmptyStatePanelStyle}"
+                            IsHitTestVisible="False"
+                            Visibility="{Binding FilteredEntries.Count, Mode=OneWay, Converter={StaticResource ZeroCountToVisibility}}">
+                    <FontIcon Glyph="&#xE9D9;" Style="{StaticResource EmptyStateGlyphStyle}" />
+                    <TextBlock Text="No diagnostic entries"
+                               Style="{StaticResource EmptyStateTitleTextBlockStyle}" />
+                    <TextBlock Style="{StaticResource EmptyStateBodyTextBlockStyle}"
+                               Text="Nothing matches the current filter. Clear it, or wait for new entries to arrive." />
+                </StackPanel>
+            </Grid>
         </Grid>
-
-        <ListView x:Name="EntriesList"
-                  Grid.Row="2"
-                  SelectionMode="Single"
-                  IsItemClickEnabled="False">
-            <ListView.ItemTemplate>
-                <DataTemplate x:DataType="vm:DiagnosticEntryRow">
-                    <Grid ColumnSpacing="8" Padding="0,2,0,2">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="200" />
-                            <ColumnDefinition Width="80" />
-                            <ColumnDefinition Width="180" />
-                            <ColumnDefinition Width="180" />
-                            <ColumnDefinition Width="140" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0"
-                                   Text="{x:Bind Timestamp}"
-                                   FontFamily="Consolas" />
-                        <TextBlock Grid.Column="1"
-                                   Text="{x:Bind Severity}" />
-                        <TextBlock Grid.Column="2"
-                                   Text="{x:Bind Category}"
-                                   FontFamily="Consolas" />
-                        <TextBlock Grid.Column="3"
-                                   Text="{x:Bind Identity}"
-                                   TextTrimming="CharacterEllipsis"
-                                   IsTextSelectionEnabled="True" />
-                        <TextBlock Grid.Column="4"
-                                   Text="{x:Bind Endpoint}"
-                                   FontFamily="Consolas"
-                                   IsTextSelectionEnabled="True" />
-                        <TextBlock Grid.Column="5"
-                                   Text="{x:Bind Message}"
-                                   TextWrapping="Wrap"
-                                   IsTextSelectionEnabled="True" />
-                    </Grid>
-                </DataTemplate>
-            </ListView.ItemTemplate>
-        </ListView>
-    </Grid>
+    </UserControl>
 </Window>

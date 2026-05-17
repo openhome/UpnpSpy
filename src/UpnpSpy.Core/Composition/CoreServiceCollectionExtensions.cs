@@ -108,10 +108,13 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<SsdpLogViewModel>();
 
         // Diagnostics viewer (Phase 11): one fresh VM per window open.
+        // Pass the rolling-file sink's current path so the viewer can offer an
+        // "Open log folder" affordance (review item #6).
         services.AddTransient(sp => new DiagnosticsViewerViewModel(
             sp.GetRequiredService<IDiagnosticBuffer>(),
             sp.GetRequiredService<DeviceRegistry>(),
-            sp.GetRequiredService<IDispatcher>()));
+            sp.GetRequiredService<IDispatcher>(),
+            logFilePath: sp.GetRequiredService<RollingFileDiagnosticSink>().CurrentPath));
 
         services.AddSingleton<ShellViewModel>();
 

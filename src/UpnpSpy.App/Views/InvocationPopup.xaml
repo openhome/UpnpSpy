@@ -5,124 +5,153 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:UpnpSpy.Core.ViewModels"
     Title="Invoke action">
-    <Grid x:Name="Root" Padding="16" RowSpacing="12">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
+    <UserControl x:Name="Root">
+        <Grid Padding="20" RowSpacing="14">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
-        <TextBlock x:Name="TitleText"
-                   Grid.Row="0"
-                   FontSize="18"
-                   FontWeight="SemiBold" />
-
-        <InfoBar x:Name="DeviceUnreachableBar"
-                 Grid.Row="1"
-                 IsOpen="False"
-                 IsClosable="False"
-                 Severity="Warning"
-                 Title="Device no longer reachable"
-                 Message="The device has gone away. Close this window." />
-
-        <ItemsControl x:Name="InputsList" Grid.Row="2">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:InvocationInputViewModel">
-                    <Grid ColumnSpacing="8" Margin="0,0,0,8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="180" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0"
-                                   Text="{x:Bind Name}"
-                                   VerticalAlignment="Center" />
-                        <TextBox Grid.Column="1"
-                                 PlaceholderText="{x:Bind DataType, Mode=OneWay}"
-                                 Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    </Grid>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
-
-        <StackPanel Grid.Row="3"
-                    Orientation="Horizontal"
-                    Spacing="8">
-            <Button x:Name="InvokeButton"
-                    Content="Invoke"
-                    Style="{ThemeResource AccentButtonStyle}" />
-            <ProgressRing x:Name="BusyRing"
-                          IsActive="False"
-                          Width="20"
-                          Height="20" />
-        </StackPanel>
-
-        <ScrollViewer Grid.Row="4" VerticalScrollMode="Auto">
-            <StackPanel x:Name="ResultPanel" Spacing="12" Visibility="Collapsed">
-                <Border x:Name="SuccessPanel"
-                        Visibility="Collapsed"
-                        Background="{ThemeResource SystemFillColorSuccessBackgroundBrush}"
-                        Padding="12"
-                        CornerRadius="4">
-                    <StackPanel Spacing="8">
-                        <TextBlock x:Name="SuccessMessageText"
-                                   FontWeight="SemiBold" />
-                        <ItemsControl x:Name="OutputsList">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:InvocationOutputViewModel">
-                                    <Grid ColumnSpacing="8" Margin="0,0,0,4">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="180" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0"
-                                                   Text="{x:Bind Name}"
-                                                   FontWeight="SemiBold" />
-                                        <TextBlock Grid.Column="1"
-                                                   Text="{x:Bind Value}"
-                                                   TextWrapping="Wrap"
-                                                   IsTextSelectionEnabled="True" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-                </Border>
-
-                <Border x:Name="FaultPanel"
-                        Visibility="Collapsed"
-                        Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
-                        Padding="12"
-                        CornerRadius="4">
-                    <StackPanel Spacing="6">
-                        <TextBlock x:Name="FaultHeader"
-                                   FontWeight="SemiBold"
-                                   Text="UPnP fault" />
-                        <TextBlock x:Name="FaultStatusText" />
-                        <TextBlock x:Name="FaultCodeText" />
-                        <TextBlock x:Name="FaultDescriptionText" TextWrapping="Wrap" />
-                        <Expander Header="Raw fault XML">
-                            <TextBox x:Name="FaultRawXmlText"
-                                     AcceptsReturn="True"
-                                     IsReadOnly="True"
-                                     FontFamily="Consolas"
-                                     TextWrapping="Wrap" />
-                        </Expander>
-                    </StackPanel>
-                </Border>
-
-                <Border x:Name="TransportPanel"
-                        Visibility="Collapsed"
-                        Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}"
-                        Padding="12"
-                        CornerRadius="4">
-                    <StackPanel Spacing="6">
-                        <TextBlock FontWeight="SemiBold" Text="Transport error" />
-                        <TextBlock x:Name="TransportMessageText" TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
+            <StackPanel Grid.Row="0" Spacing="2">
+                <TextBlock Text="{Binding Title, Mode=OneWay}"
+                           Style="{ThemeResource SubtitleTextBlockStyle}" />
+                <TextBlock Text="Invoke action"
+                           Style="{ThemeResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
-        </ScrollViewer>
-    </Grid>
+
+            <InfoBar Grid.Row="1"
+                     IsOpen="{Binding IsDeviceUnreachable, Mode=OneWay}"
+                     IsClosable="False"
+                     Severity="Warning"
+                     Title="Device no longer reachable"
+                     Message="The device has gone away. Close this window." />
+
+            <ItemsControl Grid.Row="2"
+                          ItemsSource="{Binding Inputs}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:InvocationInputViewModel">
+                        <Grid ColumnSpacing="8" Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="180" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       Text="{x:Bind Name}"
+                                       VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1"
+                                     PlaceholderText="{x:Bind DataType, Mode=OneWay}"
+                                     Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <StackPanel Grid.Row="3"
+                        Orientation="Horizontal"
+                        Spacing="12">
+                <Button Content="Invoke"
+                        Style="{ThemeResource AccentButtonStyle}"
+                        Command="{Binding InvokeCommand}" />
+                <ProgressRing IsActive="{Binding IsInvoking, Mode=OneWay}"
+                              Width="20"
+                              Height="20"
+                              VerticalAlignment="Center" />
+            </StackPanel>
+
+            <ScrollViewer Grid.Row="4" VerticalScrollMode="Auto">
+                <StackPanel Spacing="12"
+                            Visibility="{Binding HasResult, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+
+                    <Border Style="{StaticResource ResultCardStyle}"
+                            BorderBrush="{ThemeResource SystemFillColorSuccessBrush}"
+                            Background="{ThemeResource SystemFillColorSuccessBackgroundBrush}"
+                            Visibility="{Binding IsSuccess, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                        <StackPanel Spacing="8">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          Glyph="&#xE73E;"
+                                          FontSize="16"
+                                          Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                          VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding SuccessMessage, Mode=OneWay}"
+                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                            </StackPanel>
+                            <ItemsControl ItemsSource="{Binding Outputs, Mode=OneWay}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:InvocationOutputViewModel">
+                                        <Grid ColumnSpacing="8" Margin="0,0,0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="180" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{x:Bind Name}"
+                                                       FontWeight="SemiBold" />
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{x:Bind Value}"
+                                                       TextWrapping="Wrap"
+                                                       IsTextSelectionEnabled="True" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource ResultCardStyle}"
+                            BorderBrush="{ThemeResource SystemFillColorCautionBrush}"
+                            Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
+                            Visibility="{Binding IsFault, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                        <StackPanel Spacing="6">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          Glyph="&#xE7BA;"
+                                          FontSize="16"
+                                          Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                          VerticalAlignment="Center" />
+                                <TextBlock Text="UPnP fault"
+                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding FaultHttpStatus, Mode=OneWay}" />
+                            <TextBlock Text="{Binding FaultErrorCode, Mode=OneWay}" />
+                            <TextBlock Text="{Binding FaultErrorDescription, Mode=OneWay}"
+                                       TextWrapping="Wrap"
+                                       IsTextSelectionEnabled="True" />
+                            <Expander Header="Raw fault XML">
+                                <TextBox Text="{Binding FaultRawXml, Mode=OneWay}"
+                                         AcceptsReturn="True"
+                                         IsReadOnly="True"
+                                         FontFamily="Consolas"
+                                         TextWrapping="Wrap" />
+                            </Expander>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource ResultCardStyle}"
+                            BorderBrush="{ThemeResource SystemFillColorCriticalBrush}"
+                            Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}"
+                            Visibility="{Binding IsTransportError, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                        <StackPanel Spacing="6">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          Glyph="&#xEA39;"
+                                          FontSize="16"
+                                          Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                          VerticalAlignment="Center" />
+                                <TextBlock Text="Transport error"
+                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding TransportErrorMessage, Mode=OneWay}"
+                                       TextWrapping="Wrap"
+                                       IsTextSelectionEnabled="True" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </UserControl>
 </Window>
