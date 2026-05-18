@@ -46,7 +46,7 @@ public partial class DeviceTreeViewModel : ObservableObject
         foreach (var device in _registry.Snapshot().Values)
         {
             if (device.DescriptionFetchState == FetchState.Loaded)
-                Devices.Add(_createNode(device));
+                InsertSorted(_createNode(device));
         }
 
         _registry.DeviceAdded += OnAdded;
@@ -67,7 +67,7 @@ public partial class DeviceTreeViewModel : ObservableObject
             {
                 if (Devices[i].Device.Uuid == e.Device.Uuid) return;
             }
-            Devices.Add(_createNode(e.Device));
+            InsertSorted(_createNode(e.Device));
         });
     }
 
@@ -80,14 +80,59 @@ public partial class DeviceTreeViewModel : ObservableObject
                 if (Devices[i].Device.Uuid == e.Device.Uuid)
                 {
                     Devices[i].RefreshLabel();
+                    ResortIfNeeded(i);
                     return;
                 }
             }
             // FR-047 promotion: not-yet-visible device whose eager fetch just
             // completed successfully — add it to the tree now.
             if (e.Device.DescriptionFetchState == FetchState.Loaded)
-                Devices.Add(_createNode(e.Device));
+                InsertSorted(_createNode(e.Device));
         });
+    }
+
+    // FR-054: keep Devices sorted by (Label, Uuid) so the left pane stays scannable
+    // on busy networks. Case-insensitive on the friendly name; UUID is the tiebreaker
+    // so two devices sharing a label have a stable position regardless of arrival order.
+    private void InsertSorted(DeviceNodeViewModel node)
+    {
+        var idx = FindInsertionIndex(node);
+        Devices.Insert(idx, node);
+    }
+
+    private int FindInsertionIndex(DeviceNodeViewModel node)
+    {
+        for (var i = 0; i < Devices.Count; i++)
+        {
+            if (CompareNodes(node, Devices[i]) < 0) return i;
+        }
+        return Devices.Count;
+    }
+
+    private void ResortIfNeeded(int currentIndex)
+    {
+        var node = Devices[currentIndex];
+        var leftOk = currentIndex == 0 || CompareNodes(Devices[currentIndex - 1], node) <= 0;
+        var rightOk = currentIndex == Devices.Count - 1 || CompareNodes(node, Devices[currentIndex + 1]) <= 0;
+        if (leftOk && rightOk) return;
+
+        // Find the target index *as if* this node weren't already in the list,
+        // then translate back to a Move that the ObservableCollection can raise
+        // as a single CollectionChanged.Move (no node identity churn for WinUI).
+        var target = 0;
+        for (var i = 0; i < Devices.Count; i++)
+        {
+            if (i == currentIndex) continue;
+            if (CompareNodes(node, Devices[i]) < 0) break;
+            target++;
+        }
+        if (target != currentIndex) Devices.Move(currentIndex, target);
+    }
+
+    private static int CompareNodes(DeviceNodeViewModel a, DeviceNodeViewModel b)
+    {
+        var byLabel = string.Compare(a.Label, b.Label, StringComparison.OrdinalIgnoreCase);
+        return byLabel != 0 ? byLabel : string.CompareOrdinal(a.Device.Uuid, b.Device.Uuid);
     }
 
     private void OnRemoved(DeviceRemovedEvent e)

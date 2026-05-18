@@ -103,7 +103,80 @@ public sealed class DeviceTreeViewModelTests
 
         var sut = new DeviceTreeViewModel(registry, new SynchronousDispatcher());
 
+        // FR-054: seeded snapshot is sorted alphabetically by friendly name.
         sut.Devices.Should().HaveCount(2);
+        sut.Devices.Select(d => d.Label).Should().Equal("Display", "Speaker");
+    }
+
+    [Fact]
+    public void Devices_added_out_of_order_end_up_alphabetically_sorted()
+    {
+        // FR-054: a discovery burst can return devices in any order; the tree
+        // surfaces them in case-insensitive friendly-name order regardless.
+        var registry = new DeviceRegistry();
+        var sut = new DeviceTreeViewModel(registry, new SynchronousDispatcher());
+
+        registry.TryAddOrUpdate(Make("uuid-z", "Zebra", FetchState.Loaded));
+        registry.TryAddOrUpdate(Make("uuid-a", "apple", FetchState.Loaded));
+        registry.TryAddOrUpdate(Make("uuid-m", "Mango", FetchState.Loaded));
+
+        sut.Devices.Select(d => d.Label).Should().Equal("apple", "Mango", "Zebra");
+    }
+
+    [Fact]
+    public void Rename_moves_device_to_new_sorted_position()
+    {
+        // FR-054 + edge case: when a device re-announces with a new friendly name,
+        // the tree row migrates to its new alphabetical slot. The node identity
+        // is preserved (Move, not Remove+Insert) so any selection / expansion
+        // state attached to the row survives the relocation.
+        var registry = new DeviceRegistry();
+        var sut = new DeviceTreeViewModel(registry, new SynchronousDispatcher());
+        registry.TryAddOrUpdate(Make("uuid-a", "Apple", FetchState.Loaded));
+        registry.TryAddOrUpdate(Make("uuid-m", "Mango", FetchState.Loaded));
+        registry.TryAddOrUpdate(Make("uuid-z", "Zebra", FetchState.Loaded));
+        var mangoNode = sut.Devices[1];
+
+        // Mango → Avocado: should slot between Apple and Zebra at index 1 still,
+        // but verify by renaming to something that forces a real move.
+        registry.TryAddOrUpdate(Make("uuid-m", "Yak", FetchState.Loaded));
+
+        sut.Devices.Select(d => d.Label).Should().Equal("Apple", "Yak", "Zebra");
+        ReferenceEquals(sut.Devices[1], mangoNode).Should().BeTrue("rename preserves node identity");
+    }
+
+    [Fact]
+    public void Devices_sharing_a_label_are_ordered_by_uuid()
+    {
+        // FR-054 tiebreak: if two devices report identical friendly names, UUID
+        // ordering gives them a stable, deterministic position so the user
+        // doesn't see them swap rows between sessions or rescans.
+        var registry = new DeviceRegistry();
+        var sut = new DeviceTreeViewModel(registry, new SynchronousDispatcher());
+
+        registry.TryAddOrUpdate(Make("uuid-b", "Living Room", FetchState.Loaded));
+        registry.TryAddOrUpdate(Make("uuid-a", "Living Room", FetchState.Loaded));
+
+        sut.Devices.Select(d => d.Device.Uuid).Should().Equal("uuid-a", "uuid-b");
+    }
+
+    [Fact]
+    public void Promotion_to_Loaded_inserts_at_sorted_position()
+    {
+        // FR-047 promotion + FR-054 ordering: a device whose eager fetch lands
+        // late should slot into the existing alphabetical order, not append.
+        var registry = new DeviceRegistry();
+        var sut = new DeviceTreeViewModel(registry, new SynchronousDispatcher());
+        registry.TryAddOrUpdate(Make("uuid-a", "Apple", FetchState.Loaded));
+        registry.TryAddOrUpdate(Make("uuid-z", "Zebra", FetchState.Loaded));
+
+        var late = Make("uuid-m", friendly: null, FetchState.NotFetched);
+        registry.TryAddOrUpdate(late);
+        late.FriendlyName = "Mango";
+        late.DescriptionFetchState = FetchState.Loaded;
+        registry.NotifyUpdated(late.Uuid);
+
+        sut.Devices.Select(d => d.Label).Should().Equal("Apple", "Mango", "Zebra");
     }
 
     [Fact]

@@ -558,6 +558,20 @@ description: "Task list for feature 001-upnp-spy-discovery (UpnpSpy — UPnP Net
 
 ---
 
+## Phase 19: Alphabetical device-tree ordering (FR-054) — added 2026-05-18
+
+**Goal**: Replace the previous "fetch-completion order" of left-pane device rows with case-insensitive alphabetical ordering by friendly name (UUID tiebreak), so users can find a specific device on busy networks without scanning a non-deterministic list.
+
+**Independent Test**: On a LAN with at least three discoverable devices, launch the app. Once descriptions resolve, the device rows appear in alphabetical order of their friendly names regardless of fetch order. Force a rescan; the order is preserved. Rename a device on the network and re-announce it; the row migrates to its new alphabetical position without losing selection.
+
+- [X] T199 [FR-054] Update `src/UpnpSpy.Core/ViewModels/DeviceTreeViewModel.cs`: route every insertion (constructor snapshot, `OnAdded`, `OnUpdated`'s promotion branch) through a private `InsertSorted` helper that scans for the correct index using a `(Label, Uuid)` comparator — case-insensitive on `Label`, ordinal on `Uuid` for stability. In `OnUpdated`'s in-place label-refresh branch, call a new `ResortIfNeeded(currentIndex)` that uses `ObservableCollection<T>.Move` when a label change crosses a neighbour boundary, so WinUI raises a single Move and the node identity (selection / expansion state) survives.
+
+- [X] T200 [P] [FR-054] Extend `tests/UpnpSpy.Tests/ViewModels/DeviceTreeViewModelTests.cs` with: out-of-order arrivals end up alphabetically sorted; constructor-seeded snapshot is sorted; rename moves the row and preserves node identity; duplicate-label rows order stably by UUID; a late `Loaded` promotion inserts at the correct sorted position (not appended).
+
+**Checkpoint**: User Story 1 / 2 acceptance still holds; the rename edge case (spec.md Edge Cases) is upgraded from "label updates" to "label updates **and** row migrates"; the discovery-burst edge case no longer leaks fetch-completion order into the user-visible UI.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase dependencies
