@@ -8,11 +8,24 @@ using UpnpSpy.Core.Platform;
 namespace UpnpSpy.Core.Ssdp;
 
 /// <summary>
-/// Single-adapter multicast SSDP transport (FR-004, FR-048): one
-/// <see cref="UdpClient"/> bound on the IPv4 address currently published by
-/// <see cref="INetworkAdapterSelector"/>. <see cref="RestartAsync"/> tears
-/// the socket down and rebinds on the new selection so the adapter switch
-/// orchestration in <c>ShellViewModel</c> can swap NICs at runtime (FR-050).
+/// Single-adapter multicast SSDP transport (FR-004, FR-048). Uses two sockets
+/// on the selected NIC:
+///
+/// 1. A listener bound to <c>0.0.0.0:1900</c> with <c>SO_REUSEADDR</c> and
+///    joined to the SSDP multicast group on the NIC — receives the multicast
+///    NOTIFY ssdp:alive / ssdp:byebye stream (UDA 1.0 §1.1). Co-existing with
+///    Windows' SSDPSRV is fine here because each joined socket gets its own
+///    copy of every multicast datagram.
+/// 2. A search socket bound to <c>&lt;nic-ip&gt;:0</c> (ephemeral port) — sends
+///    M-SEARCH and receives the unicast 200-OK replies (UDA 1.0 §1.2). The
+///    ephemeral port is essential on Windows: SSDPSRV holds port 1900, and
+///    with <c>SO_REUSEADDR</c> sharing, unicast replies addressed to that port
+///    are delivered to only one socket (typically SSDPSRV), so an M-SEARCH
+///    socket bound to 1900 silently loses its responses.
+///
+/// <see cref="RestartAsync"/> tears both sockets down and rebinds on the
+/// newly-selected NIC so the adapter-switch orchestration in
+/// <c>ShellViewModel</c> can swap NICs at runtime (FR-050).
 /// </summary>
 public sealed class MulticastSsdpTransport : ISsdpTransport
 {
@@ -25,7 +38,7 @@ public sealed class MulticastSsdpTransport : ISsdpTransport
     private readonly ILogger<MulticastSsdpTransport> _logger;
     private readonly Channel<ReceivedSsdpDatagram> _channel;
     private readonly object _gate = new();
-    private BoundSocket? _socket;
+    private BoundSockets? _sockets;
     private bool _disposed;
 
     public MulticastSsdpTransport(
@@ -50,42 +63,31 @@ public sealed class MulticastSsdpTransport : ISsdpTransport
     {
         lock (_gate)
         {
-            if (_socket is not null) return Task.CompletedTask;
-            _socket = TryBindOnSelected();
+            if (_sockets is not null) return Task.CompletedTask;
+            _sockets = TryBindOnSelected();
         }
         return Task.CompletedTask;
     }
 
     public async Task RestartAsync(CancellationToken cancellationToken)
     {
-        BoundSocket? old;
+        BoundSockets? old;
         lock (_gate)
         {
-            old = _socket;
-            _socket = null;
+            old = _sockets;
+            _sockets = null;
         }
 
-        if (old is not null)
-        {
-            try { old.ReceiveCts.Cancel(); } catch (ObjectDisposedException) { }
-            try { old.Client.Close(); } catch { }
-            if (old.ReceiveTask is not null)
-            {
-                try { await old.ReceiveTask.ConfigureAwait(false); } catch { }
-            }
-            try { old.ReceiveCts.Dispose(); } catch { }
-        }
+        if (old is not null) await TearDownAsync(old).ConfigureAwait(false);
 
-        BoundSocket? next;
         lock (_gate)
         {
             if (_disposed) return;
-            next = TryBindOnSelected();
-            _socket = next;
+            _sockets = TryBindOnSelected();
         }
     }
 
-    private BoundSocket? TryBindOnSelected()
+    private BoundSockets? TryBindOnSelected()
     {
         var nic = _selector.Selected;
         if (nic is null)
@@ -94,30 +96,68 @@ public sealed class MulticastSsdpTransport : ISsdpTransport
             return null;
         }
 
+        BoundReceiver? listener = null;
+        BoundReceiver? searcher = null;
         try
         {
-            var client = new UdpClient(AddressFamily.InterNetwork);
-            client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-            // Bind to port 1900 so the kernel delivers multicast NOTIFY ssdp:alive /
-            // ssdp:byebye datagrams (multicast delivery is port-specific — an ephemeral
-            // port only sees the unicast M-SEARCH responses). IPAddress.Any keeps the
-            // bind robust to routing changes; JoinMulticastGroup pins the receive
-            // interface to the selected NIC.
-            client.Client.Bind(new IPEndPoint(IPAddress.Any, 1900));
-            client.JoinMulticastGroup(SsdpMulticastGroup, nic.Ipv4Address);
-            client.MulticastLoopback = false;
-
-            var cts = new CancellationTokenSource();
-            var bound = new BoundSocket(client, nic.Name, nic.Ipv4Address, cts);
-            bound.ReceiveTask = Task.Run(() => ReceiveLoopAsync(bound, cts.Token));
-            _logger.LogInformation("SSDP socket bound on {Interface} ({Address})", nic.Name, nic.Ipv4Address);
-            return bound;
+            listener = BindListener(nic);
+            searcher = BindSearcher(nic);
+            _logger.LogInformation(
+                "SSDP sockets bound on {Interface} ({Address}); search port {SearchPort}",
+                nic.Name,
+                nic.Ipv4Address,
+                ((IPEndPoint)searcher.Client.Client.LocalEndPoint!).Port);
+            return new BoundSockets(listener, searcher);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to bind SSDP socket on {Interface}", nic.Name);
+            _logger.LogWarning(ex, "Failed to bind SSDP sockets on {Interface}", nic.Name);
+            TearDownSync(listener);
+            TearDownSync(searcher);
             return null;
         }
+    }
+
+    private BoundReceiver BindListener(EligibleInterface nic)
+    {
+        var client = new UdpClient(AddressFamily.InterNetwork);
+        client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+        // Bind 0.0.0.0:1900 so the kernel delivers multicast NOTIFY ssdp:alive /
+        // ssdp:byebye to us. SSDPSRV may also hold this port; SO_REUSEADDR + the
+        // multicast join below gives us our own copy of every multicast datagram.
+        // We deliberately do NOT send M-SEARCH from this socket — see BindSearcher.
+        client.Client.Bind(new IPEndPoint(IPAddress.Any, 1900));
+        client.JoinMulticastGroup(SsdpMulticastGroup, nic.Ipv4Address);
+        client.MulticastLoopback = false;
+        return StartReceiver(client, nic.Name);
+    }
+
+    private BoundReceiver BindSearcher(EligibleInterface nic)
+    {
+        var client = new UdpClient(AddressFamily.InterNetwork);
+        // Bind <nic-ip>:0 so M-SEARCH replies (unicast back to source IP:port)
+        // come to a port that no other process holds — avoids the Windows
+        // SSDPSRV port-1900 collision that swallows replies on a shared socket.
+        // Binding to the NIC IP also anchors the outgoing multicast send to
+        // this interface.
+        client.Client.Bind(new IPEndPoint(nic.Ipv4Address, 0));
+        // Belt-and-braces: explicitly pin the multicast egress interface in
+        // case the kernel would otherwise consult the routing table for the
+        // 239.255.255.250 destination.
+        client.Client.SetSocketOption(
+            SocketOptionLevel.IP,
+            SocketOptionName.MulticastInterface,
+            nic.Ipv4Address.GetAddressBytes());
+        client.MulticastLoopback = false;
+        return StartReceiver(client, nic.Name);
+    }
+
+    private BoundReceiver StartReceiver(UdpClient client, string interfaceName)
+    {
+        var cts = new CancellationTokenSource();
+        var receiver = new BoundReceiver(client, interfaceName, cts);
+        receiver.ReceiveTask = Task.Run(() => ReceiveLoopAsync(receiver, cts.Token));
+        return receiver;
     }
 
     public async Task SendMSearchAsync(string searchTarget, TimeSpan maxWait, CancellationToken cancellationToken)
@@ -127,18 +167,20 @@ public sealed class MulticastSsdpTransport : ISsdpTransport
         if (maxWait < TimeSpan.FromSeconds(1) || maxWait > TimeSpan.FromSeconds(5))
             throw new ArgumentOutOfRangeException(nameof(maxWait), "MX must be 1..5 seconds (UDA 1.0 §1.2.1).");
 
-        BoundSocket? snapshot;
-        lock (_gate) snapshot = _socket;
+        BoundSockets? snapshot;
+        lock (_gate) snapshot = _sockets;
         if (snapshot is null) return;
 
         var payload = BuildMSearchPayload(searchTarget, (int)maxWait.TotalSeconds);
         try
         {
-            await snapshot.Client.SendAsync(payload, payload.Length, SsdpMulticastEndpoint).ConfigureAwait(false);
+            await snapshot.Searcher.Client
+                .SendAsync(payload, payload.Length, SsdpMulticastEndpoint)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "M-SEARCH send failed on {Interface}", snapshot.InterfaceName);
+            _logger.LogWarning(ex, "M-SEARCH send failed on {Interface}", snapshot.Searcher.InterfaceName);
         }
     }
 
@@ -155,7 +197,7 @@ public sealed class MulticastSsdpTransport : ISsdpTransport
         return Encoding.ASCII.GetBytes(sb.ToString());
     }
 
-    private async Task ReceiveLoopAsync(BoundSocket bound, CancellationToken cancellationToken)
+    private async Task ReceiveLoopAsync(BoundReceiver bound, CancellationToken cancellationToken)
     {
         try
         {
@@ -194,40 +236,66 @@ public sealed class MulticastSsdpTransport : ISsdpTransport
         if (_disposed) return;
         _disposed = true;
 
-        BoundSocket? snapshot;
+        BoundSockets? snapshot;
         lock (_gate)
         {
-            snapshot = _socket;
-            _socket = null;
+            snapshot = _sockets;
+            _sockets = null;
         }
 
-        if (snapshot is not null)
-        {
-            try { snapshot.ReceiveCts.Cancel(); } catch (ObjectDisposedException) { }
-            try { snapshot.Client.Close(); } catch { }
-            if (snapshot.ReceiveTask is not null)
-            {
-                try { await snapshot.ReceiveTask.ConfigureAwait(false); } catch { }
-            }
-            try { snapshot.ReceiveCts.Dispose(); } catch { }
-        }
+        if (snapshot is not null) await TearDownAsync(snapshot).ConfigureAwait(false);
 
         _channel.Writer.TryComplete();
     }
 
-    private sealed class BoundSocket
+    private static async Task TearDownAsync(BoundSockets sockets)
     {
-        public BoundSocket(UdpClient client, string interfaceName, IPAddress localAddress, CancellationTokenSource receiveCts)
+        await TearDownAsync(sockets.Listener).ConfigureAwait(false);
+        await TearDownAsync(sockets.Searcher).ConfigureAwait(false);
+    }
+
+    private static async Task TearDownAsync(BoundReceiver receiver)
+    {
+        try { receiver.ReceiveCts.Cancel(); } catch (ObjectDisposedException) { }
+        try { receiver.Client.Close(); } catch { }
+        if (receiver.ReceiveTask is not null)
+        {
+            try { await receiver.ReceiveTask.ConfigureAwait(false); } catch { }
+        }
+        try { receiver.ReceiveCts.Dispose(); } catch { }
+    }
+
+    private static void TearDownSync(BoundReceiver? receiver)
+    {
+        if (receiver is null) return;
+        try { receiver.ReceiveCts.Cancel(); } catch (ObjectDisposedException) { }
+        try { receiver.Client.Close(); } catch { }
+        try { receiver.ReceiveCts.Dispose(); } catch { }
+    }
+
+    private sealed class BoundSockets
+    {
+        public BoundSockets(BoundReceiver listener, BoundReceiver searcher)
+        {
+            Listener = listener;
+            Searcher = searcher;
+        }
+
+        public BoundReceiver Listener { get; }
+        public BoundReceiver Searcher { get; }
+    }
+
+    private sealed class BoundReceiver
+    {
+        public BoundReceiver(UdpClient client, string interfaceName, CancellationTokenSource receiveCts)
         {
             Client = client;
             InterfaceName = interfaceName;
-            LocalAddress = localAddress;
             ReceiveCts = receiveCts;
         }
 
         public UdpClient Client { get; }
         public string InterfaceName { get; }
-        public IPAddress LocalAddress { get; }
         public CancellationTokenSource ReceiveCts { get; }
         public Task? ReceiveTask { get; set; }
     }
