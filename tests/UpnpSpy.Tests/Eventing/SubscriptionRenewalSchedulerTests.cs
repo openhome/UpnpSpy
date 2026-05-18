@@ -69,7 +69,9 @@ public sealed class SubscriptionRenewalSchedulerTests
         scheduler.Start();
         await WaitForPendingDelay(clock);
         clock.CompleteAllDelays();
-        await WaitFor(() => state.Status == SubscriptionStatus.Lapsed);
+        // Wait on both fields: the scheduler sets Status before FailureReason,
+        // so polling on Status alone can read FailureReason==null on another thread.
+        await WaitFor(() => state.Status == SubscriptionStatus.Lapsed && state.FailureReason is not null);
 
         state.Status.Should().Be(SubscriptionStatus.Lapsed);
         state.FailureReason.Should().Contain("412");
@@ -94,7 +96,7 @@ public sealed class SubscriptionRenewalSchedulerTests
         scheduler.Start();
         await WaitForPendingDelay(clock);
         clock.CompleteAllDelays();
-        await WaitFor(() => state.Status == SubscriptionStatus.Lapsed);
+        await WaitFor(() => state.Status == SubscriptionStatus.Lapsed && state.FailureReason is not null);
 
         state.Status.Should().Be(SubscriptionStatus.Lapsed);
         state.FailureReason.Should().Contain("connection reset");
