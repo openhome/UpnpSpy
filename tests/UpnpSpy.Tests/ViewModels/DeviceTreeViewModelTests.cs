@@ -137,8 +137,6 @@ public sealed class DeviceTreeViewModelTests
         registry.TryAddOrUpdate(Make("uuid-z", "Zebra", FetchState.Loaded));
         var mangoNode = sut.Devices[1];
 
-        // Mango → Avocado: should slot between Apple and Zebra at index 1 still,
-        // but verify by renaming to something that forces a real move.
         registry.TryAddOrUpdate(Make("uuid-m", "Yak", FetchState.Loaded));
 
         sut.Devices.Select(d => d.Label).Should().Equal("Apple", "Yak", "Zebra");

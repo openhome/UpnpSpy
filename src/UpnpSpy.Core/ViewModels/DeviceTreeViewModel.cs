@@ -91,13 +91,11 @@ public partial class DeviceTreeViewModel : ObservableObject
         });
     }
 
-    // FR-054: keep Devices sorted by (Label, Uuid) so the left pane stays scannable
-    // on busy networks. Case-insensitive on the friendly name; UUID is the tiebreaker
-    // so two devices sharing a label have a stable position regardless of arrival order.
+    // FR-054: UUID tiebreak so two devices sharing a label keep a stable position
+    // across arrival order, rescans, and re-announces.
     private void InsertSorted(DeviceNodeViewModel node)
     {
-        var idx = FindInsertionIndex(node);
-        Devices.Insert(idx, node);
+        Devices.Insert(FindInsertionIndex(node), node);
     }
 
     private int FindInsertionIndex(DeviceNodeViewModel node)
@@ -109,23 +107,12 @@ public partial class DeviceTreeViewModel : ObservableObject
         return Devices.Count;
     }
 
+    // Move (not Remove+Insert) so WinUI raises a single CollectionChanged.Move
+    // and the node's selection / expansion state survives the relocation.
     private void ResortIfNeeded(int currentIndex)
     {
-        var node = Devices[currentIndex];
-        var leftOk = currentIndex == 0 || CompareNodes(Devices[currentIndex - 1], node) <= 0;
-        var rightOk = currentIndex == Devices.Count - 1 || CompareNodes(node, Devices[currentIndex + 1]) <= 0;
-        if (leftOk && rightOk) return;
-
-        // Find the target index *as if* this node weren't already in the list,
-        // then translate back to a Move that the ObservableCollection can raise
-        // as a single CollectionChanged.Move (no node identity churn for WinUI).
-        var target = 0;
-        for (var i = 0; i < Devices.Count; i++)
-        {
-            if (i == currentIndex) continue;
-            if (CompareNodes(node, Devices[i]) < 0) break;
-            target++;
-        }
+        var target = FindInsertionIndex(Devices[currentIndex]);
+        if (target > currentIndex) target--;
         if (target != currentIndex) Devices.Move(currentIndex, target);
     }
 
