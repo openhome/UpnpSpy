@@ -98,7 +98,12 @@ public sealed class MulticastSsdpTransport : ISsdpTransport
         {
             var client = new UdpClient(AddressFamily.InterNetwork);
             client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-            client.Client.Bind(new IPEndPoint(nic.Ipv4Address, 0));
+            // Bind to port 1900 so the kernel delivers multicast NOTIFY ssdp:alive /
+            // ssdp:byebye datagrams (multicast delivery is port-specific — an ephemeral
+            // port only sees the unicast M-SEARCH responses). IPAddress.Any keeps the
+            // bind robust to routing changes; JoinMulticastGroup pins the receive
+            // interface to the selected NIC.
+            client.Client.Bind(new IPEndPoint(IPAddress.Any, 1900));
             client.JoinMulticastGroup(SsdpMulticastGroup, nic.Ipv4Address);
             client.MulticastLoopback = false;
 
