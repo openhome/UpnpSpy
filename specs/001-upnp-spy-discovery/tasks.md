@@ -572,6 +572,22 @@ description: "Task list for feature 001-upnp-spy-discovery (UpnpSpy — UPnP Net
 
 ---
 
+## Phase 20: Newest-first SSDP log ordering (FR-003, FR-055) — added 2026-05-18
+
+**Goal**: Reorder the right-pane SSDP NOTIFY log so the most recently received advertisement is at the top of the list and the oldest retained advertisement is at the bottom — the natural reading order for a live diagnostic stream. FIFO eviction at the 10,000-entry cap (FR-016) is preserved: the bottom row is the one evicted.
+
+**Independent Test**: Launch the app on a chatty LAN. The first row to appear is at the top. As further advertisements arrive, new rows push older ones downward; the user's eye does not have to chase a moving tail. Scroll down to read older entries; the list does not yank back to the top on every new arrival. Stress-evict (≥10,001 entries) and confirm the oldest entries are dropped off the bottom, not the top.
+
+- [ ] T201 [FR-055] Update `src/UpnpSpy.Core/ViewModels/SsdpLogViewModel.cs`: construct the `BoundedObservableCollection<SsdpLogEntry>` with `BoundedEvictionMode.EvictTail`, and change `Append` to `Entries.Insert(0, entry)` instead of `Entries.Add(entry)`. Capacity (10,000), dispatcher posting, and the null guard stay unchanged.
+
+- [ ] T202 [FR-055] Update `src/UpnpSpy.App/Views/SsdpLogView.xaml.cs`: invert the auto-follow. The sticky zone becomes the *top* (`_autoScrollEnabled = _scrollViewer.VerticalOffset <= StickyTopThresholdPx`), and `OnEntriesChanged` scrolls to `ViewModel.Entries[0]` rather than `ViewModel.Entries[^1]`. Rename the threshold constant to reflect the new semantics.
+
+- [ ] T203 [P] [FR-055] Update `tests/UpnpSpy.Tests/ViewModels/SsdpLogViewModelTests.cs`: flip the insertion-order test (newest expected at index 0, oldest at `^1`); flip the capacity-eviction test (the bottom entries are evicted, so after `a, b, c, d` with capacity 3 the expected order is `d, c, b`); flip the stress test (index 0 = newest UUID, `^1` = the oldest retained one).
+
+**Checkpoint**: User Story 4 acceptance scenarios still hold under the new direction; FR-016 eviction is still FIFO (oldest discarded) but evicts from the tail; the User Story 4 acceptance #3 phrasing (do not jump back to the top on every new arrival) is now what `SsdpLogView.xaml.cs` enforces.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase dependencies

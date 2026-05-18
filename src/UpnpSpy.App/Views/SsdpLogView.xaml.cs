@@ -7,13 +7,14 @@ using UpnpSpy.Core.ViewModels;
 namespace UpnpSpy.App.Views;
 
 /// <summary>
-/// Right-pane SSDP advertisement viewer. Auto-scrolls to newest entries while the
-/// user is parked near the bottom; once they scroll up, the auto-follow disables
-/// so they can read history without the list jumping under them (acceptance #3).
+/// Right-pane SSDP advertisement viewer. Newest rows arrive at index 0 (FR-055).
+/// Auto-scrolls to keep the newest entry visible while the user is parked near
+/// the top; once they scroll down to read history, the auto-follow disables so
+/// the list does not jump under them (acceptance #3).
 /// </summary>
 public sealed partial class SsdpLogView : UserControl
 {
-    private const double StickyBottomThresholdPx = 24;
+    private const double StickyTopThresholdPx = 24;
 
     public SsdpLogViewModel ViewModel { get; }
 
@@ -47,8 +48,7 @@ public sealed partial class SsdpLogView : UserControl
     private void OnScrollViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
     {
         if (e.IsIntermediate || _scrollViewer is null) return;
-        var distanceFromBottom = _scrollViewer.ScrollableHeight - _scrollViewer.VerticalOffset;
-        _autoScrollEnabled = distanceFromBottom <= StickyBottomThresholdPx;
+        _autoScrollEnabled = _scrollViewer.VerticalOffset <= StickyTopThresholdPx;
     }
 
     private void OnEntriesChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -59,7 +59,7 @@ public sealed partial class SsdpLogView : UserControl
         DispatcherQueue.TryEnqueue(() =>
         {
             if (ViewModel.Entries.Count == 0) return;
-            EntriesList.ScrollIntoView(ViewModel.Entries[^1]);
+            EntriesList.ScrollIntoView(ViewModel.Entries[0]);
         });
     }
 

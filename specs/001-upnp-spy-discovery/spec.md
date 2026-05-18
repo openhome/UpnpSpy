@@ -91,9 +91,9 @@ The right pane shows a continuously updating, scrollable list of every SSDP adve
 
 **Acceptance Scenarios**:
 
-1. **Given** the application is running, **When** an SSDP alive advertisement is received, **Then** a new row is appended to the right-pane list showing the timestamp it was received, the literal `ALIVE`, and the device's UUID.
-2. **Given** the application is running, **When** an SSDP byebye advertisement is received, **Then** a new row is appended showing the timestamp, the literal `BYEBYE`, and the device's UUID.
-3. **Given** the list has grown long enough to exceed the visible area, **When** the user scrolls back, **Then** earlier entries remain readable and the list does not jump back to the bottom on every new arrival.
+1. **Given** the application is running, **When** an SSDP alive advertisement is received, **Then** a new row is inserted at the **top** of the right-pane list showing the timestamp it was received, the literal `ALIVE`, and the device's UUID.
+2. **Given** the application is running, **When** an SSDP byebye advertisement is received, **Then** a new row is inserted at the **top** showing the timestamp, the literal `BYEBYE`, and the device's UUID.
+3. **Given** the list has grown long enough to exceed the visible area, **When** the user scrolls down to read older entries, **Then** earlier entries remain readable and the list does not jump back to the top on every new arrival.
 4. **Given** an advertisement arrives that the application cannot parse far enough to extract a UUID, **Then** the malformed message is ignored for logging purposes and the application remains responsive.
 
 ---
@@ -181,7 +181,7 @@ Right-clicking a service node offers a "Subscribe" option. Choosing it opens a p
 - **Rescan triggered while a previous rescan is still in progress**: The previous rescan's pruning is superseded by the new one; only one rescan window is active at a time.
 - **Many devices on the network (dozens)**: The tree remains responsive and all devices are listed; the SSDP log pane remains scrollable.
 - **Device announces itself, then re-announces with a changed friendly name**: The label updates to reflect the latest announcement and the row migrates to its new alphabetical position (FR-054). The row's identity is preserved across the move, so any selection or expansion state survives.
-- **SSDP log grows very long**: The application caps the log at 10,000 entries and discards the oldest entries first as new entries arrive (see Assumptions).
+- **SSDP log grows very long**: The application caps the log at 10,000 entries and discards the oldest entries (from the bottom of the list) first as new entries arrive at the top (see Assumptions).
 - **Action invocation returns an unexpectedly large response, or the response is malformed**: The popup shows what it can parse and indicates the rest could not be displayed; the application does not crash.
 - **Subscription receives an event larger than expected, or a malformed event**: The popup shows what it can parse and logs the issue without disrupting the rest of the application or other subscriptions.
 - **Multiple subscription popups open simultaneously across different services**: Each popup tracks its own subscription independently and unsubscribes on its own close; closing one does not affect the others.
@@ -198,7 +198,7 @@ All protocol-mandating requirements below cite the relevant section of `docs/spe
 
 - **FR-001**: The application MUST present two side-by-side panes within a single window: a device tree on the left and an SSDP message log on the right.
 - **FR-002**: The left pane MUST display discovered devices as the top level of a tree, with their services as children and each service's actions as grandchildren.
-- **FR-003**: The right pane MUST present its content as a scrolling list, with newer entries added at the end and earlier entries reachable by scrolling.
+- **FR-003**: The right pane MUST present its content as a scrolling list, with newer entries inserted at the **top** and earlier entries reachable by scrolling **down** (see FR-055).
 
 #### Discovery
 
@@ -225,9 +225,10 @@ All protocol-mandating requirements below cite the relevant section of `docs/spe
 
 #### SSDP message log (right pane)
 
-- **FR-014**: For every SSDP alive advertisement the system receives (`NTS: ssdp:alive`, UDA 1.0 §1.1.2), it MUST append a row to the right-pane list showing the timestamp at which the message was received, the literal `ALIVE`, and the device's UUID.
-- **FR-015**: For every SSDP byebye advertisement the system receives (`NTS: ssdp:byebye`, UDA 1.0 §1.1.3), it MUST append a row to the right-pane list showing the timestamp at which the message was received, the literal `BYEBYE`, and the device's UUID.
-- **FR-016**: The system MUST cap the SSDP log at **10,000 entries**; once the cap is reached, the oldest entry MUST be discarded each time a new entry is appended (FIFO eviction). This bound prevents unbounded memory growth during long sessions while preserving many hours of chatter on a typical LAN.
+- **FR-014**: For every SSDP alive advertisement the system receives (`NTS: ssdp:alive`, UDA 1.0 §1.1.2), it MUST insert a row at the top of the right-pane list showing the timestamp at which the message was received, the literal `ALIVE`, and the device's UUID.
+- **FR-015**: For every SSDP byebye advertisement the system receives (`NTS: ssdp:byebye`, UDA 1.0 §1.1.3), it MUST insert a row at the top of the right-pane list showing the timestamp at which the message was received, the literal `BYEBYE`, and the device's UUID.
+- **FR-016**: The system MUST cap the SSDP log at **10,000 entries**; once the cap is reached, the oldest entry MUST be discarded each time a new entry arrives (FIFO eviction). Because new rows enter at the top (FR-055), the oldest entry sits at the bottom of the list and is the one discarded. This bound prevents unbounded memory growth during long sessions while preserving many hours of chatter on a typical LAN.
+- **FR-055**: The right-pane SSDP log MUST be ordered **newest-first**: the most recently received advertisement occupies the top row and the oldest retained advertisement occupies the bottom row. The ordering MUST hold both during steady-state arrivals and across the FR-016 eviction boundary (eviction removes the bottom row, not the top). The view MUST auto-follow newly-arriving rows only while the user is parked at (or near) the top of the list; once the user has scrolled away from the top to read history, the list MUST NOT yank back to the top on every new arrival (acceptance #3).
 
 #### XML viewing
 
@@ -357,7 +358,7 @@ All protocol-mandating requirements below cite the relevant section of `docs/spe
 - The "discovery wait period" used at startup and on rescan corresponds to the MX value the application includes in its M-SEARCH (a standard 2–5 second window). The exact value is an implementation detail.
 - Service and action enumeration is **mixed eager/lazy**: a device's description (which carries the friendly name and the device's service list) is fetched **eagerly** as soon as the device is discovered via SSDP (FR-043), so the tree label can resolve from the FR-010 fallback to the friendly name without the user expanding the node. A service's description (SCPD, which carries the action list) is still fetched **lazily** the first time the user expands the service. The combination means device labels and service lists are paid for at discovery time (one HTTP fetch per new device, capped in parallelism), while per-service action lists are paid for only when the user is interested in that specific service. This avoids hammering every device-and-service on the network at startup while still letting the user see human-readable device names without any interaction.
 - The right-pane SSDP log records SSDP advertisement messages (alive and byebye NOTIFY). Direct unicast responses to M-SEARCH and unrelated multicast traffic are not displayed in this log (devices discovered via M-SEARCH still appear in the tree; they just do not produce an `ALIVE`/`BYEBYE` row unless they also advertise).
-- The SSDP log is capped at **10,000 entries**; when the cap is reached, the oldest entry is discarded as each new entry is appended (FIFO eviction).
+- The SSDP log is capped at **10,000 entries**; when the cap is reached, the oldest entry (at the bottom, per FR-055) is discarded as each new entry arrives at the top (FIFO eviction).
 - Embedded devices (declared via nested `<deviceList>` inside a device's description) are not shown as separate tree entries in v1. The root device from each advertisement appears in the tree; the services it exposes include the union of its own `<serviceList>` and every `<serviceList>` declared in its embedded children, walked recursively. A service originating from an embedded child is labelled in a way that identifies the embedded device it came from, so two services of the same type declared in different embedded children can be told apart in the tree. The "root only" rule is enforced at the SSDP layer (FR-053): M-SEARCH uses `ST: upnp:rootdevice` and `NOTIFY` advertisements only register/remove a tree entry when their `NT` is exactly `upnp:rootdevice`; a description-fetch backstop catches any non-conformant device that slips through (FR-043). Without these gates an IGD-style chassis (canonically Sky's ADSL router) would advertise one root + multiple embedded children under separate UUIDs, all sharing the same `LOCATION`, and would surface as several identical-looking rows.
 - The application targets the IPv4 SSDP multicast group (`239.255.255.250:1900`) on a **single user-selected eligible adapter** (FR-048): it binds one UDP socket on that adapter's IP, joins the multicast group there, sends M-SEARCH probes from there, and binds the eventing callback host on that adapter's specific IP via `TcpListener` (FR-049). The default at startup is the first eligible adapter; a `View → Network adapter` menu lets the user switch at runtime, which rebinds everything atomically per FR-050. Multi-NIC merging is therefore not part of v1 — a device reachable on multiple adapters appears only when the user has the corresponding adapter selected. IPv6 is out of scope for v1.
 - The user has permission on the host to send and receive UDP multicast on the chosen interface, and to receive TCP callbacks on a local port. Firewall configuration is the user's responsibility; **no URL ACL grant is required** because the callback host uses `TcpListener` rather than `HttpListener` (FR-049).
